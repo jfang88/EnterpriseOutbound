@@ -1,8 +1,8 @@
 # Enterprise Outbound Network Security
 
 **Status:** Working draft  
-**Version:** 0.2  
-**Last updated:** 2026-09-16
+**Version:** 0.3  
+**Last updated:** 2026-09-22
 
 ## 1. Purpose
 
@@ -43,6 +43,7 @@ The core security objective is broader than simply deploying a proxy. The enterp
 | Vendor/SaaS that explicitly recommends direct connectivity or does not tolerate interception | Controlled direct egress with enterprise DNS, restrictive firewall policy, fixed egress IP where useful, endpoint controls, logging and explicit exception |
 | Software/package repositories | Prefer managed enterprise repositories/mirrors; otherwise allowlisted egress with DNS and firewall controls; proxy where compatible |
 | Non-HTTP or long-lived protocols | Protocol-aware gateway where available; otherwise restrictive Layer-3/4 firewall policy and destination allowlisting |
+| Human-operated SFTP to external partners | Managed endpoint + endpoint DLP/application control + default-deny outbound SSH + approved provider/partner restrictions; migrate recurring or sensitive flows to enterprise MFT/secure transfer |
 | Privileged management infrastructure | No general Internet access; explicit destination-specific egress only |
 | Unknown/unclassified Internet access from a server workload | Deny by default |
 
@@ -1728,3 +1729,170 @@ The same architecture applies to many enterprise protocols and use cases, includ
 - Machine-to-machine gRPC services.
 
 The lesson is general: **do not equate inability to inspect application payloads with inability to authenticate, authorize, restrict and log the outbound connection.**
+
+
+# Appendix B — Human-operated SFTP data transfer
+
+A detailed design is maintained in:
+
+- [Use Case — Human-Operated SFTP Data Transfer to External Services](use-cases/human-sftp-egress.md)
+
+## B.1 Why this needs a separate control model
+
+Human-operated SFTP creates a data-exfiltration problem that is not solved simply by allowlisting a known SFTP hostname.
+
+A multi-tenant SFTP provider can present one approved network destination while hosting many logical customer/subscriber destinations behind it. A firewall can typically authorize the provider hostname/IP and TCP port, but after SSH key exchange the SFTP authentication and file-transfer activity are protected inside SSH.
+
+The key security distinction is:
+
+> **Approved network destination does not automatically mean approved logical recipient.**
+
+This is analogous to Microsoft 365: allowing Microsoft service endpoints does not by itself prove that a user is interacting only with an approved Microsoft 365 tenant. Microsoft provides tenant-aware controls such as Entra tenant restrictions because logical tenant authorization must be enforced above the network-destination layer.
+
+Generic SFTP services often do not provide an equivalent enterprise tenant-control layer. Where they do not, the gap must be addressed using endpoint controls, provider-side account restrictions, an SSH/SFTP broker, controlled staging, or an enterprise Managed File Transfer service.
+
+## B.2 Recommended current-state pattern
+
+Until centralized MFT exists, human SFTP should use defense in depth:
+
+1. Managed enterprise endpoint only.
+2. Approved users/groups only.
+3. Enterprise-approved SFTP client.
+4. Endpoint DLP applied to sensitive files accessed by the SFTP client.
+5. Application control to restrict alternate/portable transfer clients where practical.
+6. Default-deny outbound SSH/SFTP from normal user networks.
+7. Network allowlist to the approved SFTP provider only.
+8. Enterprise DNS and protective DNS.
+9. Stable enterprise egress IP where practical.
+10. Provider-side source-IP allowlisting.
+11. Named user credentials/keys rather than broadly shared accounts.
+12. Managed/pinned SSH host keys.
+13. Provider-side restriction to the approved partner/account/folder where supported.
+14. Provider, endpoint and firewall logs correlated in the SIEM.
+15. Detection of unusually large, first-seen, after-hours or otherwise anomalous transfers.
+16. Periodic recertification of user, partner and transfer requirement.
+
+## B.3 Controls that matter most
+
+### Endpoint DLP
+
+The endpoint sees the file before SSH encrypts it, making endpoint DLP one of the strongest compensating controls for direct user-operated SFTP.
+
+Where supported, the enterprise should audit, warn, require override justification, or block when an approved SFTP client accesses files matching sensitive labels or DLP classifications.
+
+Endpoint DLP does not, by itself, identify which subscriber behind a multi-tenant SFTP service receives the file.
+
+### Application control
+
+Use application control to reduce bypass through alternative tools such as unmanaged SFTP clients, `scp`, interactive `ssh`, portable executables or scripting utilities where those tools are not required by the user's role.
+
+This is defense in depth, not a complete exfiltration-prevention mechanism.
+
+### Network controls
+
+General outbound TCP/22 should not be open from user networks.
+
+Restrict SFTP to:
+
+- Approved users/devices where identity-aware firewalling is supported.
+- Approved provider endpoints.
+- Required ports only.
+
+Network metadata should be used for anomaly detection, but normal network controls should not be assumed to see SFTP file names, paths, contents or logical recipient accounts.
+
+### Provider-side controls
+
+The external SFTP service should, where supported, enforce:
+
+- Named enterprise identities.
+- Source-IP allowlists.
+- Partner/recipient allowlists.
+- Virtual-folder isolation.
+- No interactive shell.
+- No SSH tunnelling/port forwarding.
+- Detailed audit logs.
+- SIEM/API log export.
+
+The strongest provider-side mitigation is to bind the enterprise identity to the intended partner/folder so the same credential cannot address arbitrary subscribers on the platform.
+
+## B.4 Comparison with Microsoft 365 tenant exfiltration
+
+| Security question | Multi-tenant SFTP | Microsoft 365 |
+|---|---|---|
+| Does allowing the service hostname prove the logical recipient? | No | No |
+| Can a normal network firewall enforce the tenant/account? | Usually no | Not reliably by destination alone |
+| Is payload/content visible to the network? | Normally no after SSH encryption | Often encrypted; Microsoft-aware controls operate above the basic network layer |
+| Native logical-tenant restriction | Provider-dependent | Entra tenant restrictions/cross-tenant controls for supported scenarios |
+| Endpoint data control | Endpoint DLP can protect sensitive files before SFTP upload | Endpoint and Microsoft 365/Purview controls available |
+| Service-side DLP/audit | Provider-dependent | Rich Microsoft 365/Purview integration |
+| Preferred control for logical recipient | Provider restriction or enterprise transfer gateway | Tenant/cross-tenant policy plus service controls |
+
+The architectural lesson is the same for both:
+
+> **Do not confuse trusted service infrastructure with trusted data recipient.**
+
+## B.5 Higher-assurance interim option
+
+For sensitive or infrequent transfers, a locked-down transfer VDI/workstation can provide a practical control point before enterprise MFT is available.
+
+The user first places the file into a controlled staging area for DLP/malware scan/approval. A restricted transfer desktop then provides only the approved SFTP client and approved destination.
+
+This improves assurance but adds operational friction and support overhead.
+
+## B.6 Strategic target — enterprise MFT / secure transfer
+
+Recurring or sensitive human SFTP should migrate to a centralized Managed File Transfer or secure file-exchange capability.
+
+The desired security decision becomes:
+
+> **User X may send approved file Y to approved partner Z for approved business purpose Q.**
+
+The MFT platform should provide:
+
+- Enterprise SSO/MFA.
+- Approved partner catalogue.
+- Recipient allowlisting.
+- DLP/classification.
+- Malware scanning.
+- Approval workflow.
+- File hashing and transaction IDs.
+- Managed SSH credentials and host keys.
+- Transfer limits.
+- Immutable audit trail.
+- Retention/expiry.
+- SIEM integration.
+- Central partner disablement.
+- High availability and disaster recovery.
+
+The endpoint should ideally no longer require direct Internet TCP/22.
+
+## B.7 Alternatives to direct SFTP
+
+Depending on partner requirements, consider:
+
+- Enterprise secure web file exchange.
+- Controlled Microsoft 365/SharePoint/OneDrive external collaboration.
+- Provider-native managed partner exchange.
+- Dedicated transfer VDI as an interim control.
+- Automated service-to-service SFTP for recurring flows.
+- Partner APIs or integration platforms.
+
+For human-to-human exchange, secure web file sharing may provide better recipient identity, DLP and audit controls than direct desktop SFTP.
+
+## B.8 Policy position
+
+Human SFTP should be treated as a **controlled data-egress exception**, not simply as another allowed TCP destination.
+
+Approval should consider:
+
+- User/device.
+- Provider.
+- Logical partner/account.
+- Data classification.
+- Transfer frequency and volume.
+- Endpoint DLP coverage.
+- Provider restrictions.
+- Audit quality.
+- Whether the flow should instead move to MFT/secure exchange.
+
+The detailed SFTP requirements and detection catalogue are maintained in the linked use-case document.
