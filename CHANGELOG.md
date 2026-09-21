@@ -2,6 +2,32 @@
 
 This file tracks material additions and changes to the Enterprise Outbound Security working drafts.
 
+## 2026-09-22 — Draft v0.3
+
+### Added
+
+- Added a dedicated human-operated SFTP outbound-transfer use case in `docs/use-cases/human-sftp-egress.md`.
+- Added an SFTP pattern to the main enterprise outbound architecture and Appendix B summary.
+- Documented the multi-tenant SFTP risk: an approved hostname/provider does not necessarily identify or restrict the logical recipient/subscriber.
+- Compared SFTP exfiltration risk with Microsoft 365 external-tenant exfiltration and highlighted the difference between network destination authorization and logical tenant/recipient authorization.
+- Added endpoint control recommendations including Endpoint DLP, application control, EDR detections, managed host keys and controlled staging.
+- Added network controls including default-deny outbound TCP/22, provider-specific allowlisting, enterprise DNS, fixed egress IP and transfer-volume analytics.
+- Added provider-side controls including source-IP restrictions, named identities, recipient/folder restrictions, virtual-folder isolation, shell/tunnelling restrictions and audit export.
+- Added a locked-down transfer VDI/workstation pattern as an interim higher-assurance option.
+- Defined enterprise Managed File Transfer / secure transfer as the strategic target for recurring or sensitive human file transfer.
+- Added twelve proposed SFTP-specific requirements (`SFTP-01` through `SFTP-12`).
+- Added a fifteen-item SFTP SIEM/SOC detection catalogue.
+- Added alternative patterns including secure web file exchange, controlled Microsoft 365 collaboration, provider-native exchange and automated partner integration.
+
+### Architectural position
+
+- Treat human-operated SFTP as controlled data egress, not merely an allowed network destination.
+- Do not assume an allowlisted multi-tenant SFTP provider proves the intended recipient.
+- Use endpoint DLP because the endpoint can inspect/classify the file before SSH encryption.
+- Use provider-side recipient/account restrictions whenever available.
+- Block general Internet SSH/SFTP and allow only approved users/devices to approved provider endpoints.
+- For sensitive or recurring transfers, migrate from endpoint-direct SFTP to enterprise MFT or another centrally governed secure-transfer service.
+
 ## 2026-09-11 — Draft v0.1
 
 ### Added
