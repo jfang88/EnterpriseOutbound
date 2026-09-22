@@ -2,6 +2,36 @@
 
 This file tracks material additions and changes to the Enterprise Outbound Security working drafts.
 
+## 2026-09-22 — Draft v0.4
+
+### Added
+
+- Added a risk-tiered egress-control model that distinguishes interactive human behavior from tightly constrained fixed-purpose workloads.
+- Added five suggested egress risk tiers, from constrained managed workloads through crown-jewel/regulated transfer use cases.
+- Added explicit risk dimensions: human agency, destination variability, data access, protocol flexibility, software mutability, credential power, logical-destination ambiguity, compromise blast radius, availability criticality and required observability.
+- Added a detailed comparison of human endpoint risk versus fixed-purpose managed server/workload risk.
+- Documented when enterprise/protective DNS plus Layer-3/4 stateful egress controls can be an appropriate primary pattern for low-variability workloads.
+- Explicitly documented the residual visibility gap when Layer-7 inspection is absent: the enterprise may know source, destination, timing and byte counts but may not know the exact file, URL/API method, data fields or logical SaaS tenant/account that received data.
+- Documented why the visibility gap may still be an acceptable residual risk for a tightly managed fixed-purpose workload with a small capability envelope and strong compensating controls.
+- Added an assume-breach overlay for managed workloads covering arbitrary IP/DNS access, abuse of approved SaaS/API destinations, data access, secret theft, tool execution, HTTPS tunnelling, bulk exfiltration, configuration manipulation and use of lateral egress relays.
+- Added an assume-breach overlay for interactive human endpoints, highlighting abuse of legitimate SaaS, cloud storage, collaboration platforms, external tenants/accounts and approved transfer services.
+- Added analysis of the incremental security value of Layer-7 filtering, including URL/API policy, identity, DLP, malware inspection, SaaS recognition and tenant restrictions.
+- Added explicit residual limitations of Layer-7 controls, including mTLS/pinning, QUIC/gRPC/WebSockets/custom protocols, application-layer encryption, encrypted archives and abuse of otherwise-valid application transactions.
+- Added a detailed Layer-7 proxy/SWG availability and security risk table covering outage, centralized blast radius, capacity, latency, TLS/certificate failures, proxy authentication, dynamic endpoints, protocol compatibility, state/session failover, provider outages, backhaul dependency and TLS-decryption concentration.
+- Added explicit fail-open versus fail-closed analysis.
+- Added a DNS/L3-L4 versus Layer-7 decision matrix for fixed APIs, multi-tenant services, mTLS/pinned applications, sensitive servers, users, SFTP, privileged endpoints and high-SLA applications.
+- Added baseline requirements `OUT-21` (risk-tiered egress selection), `OUT-22` (residual visibility acceptance) and `OUT-23` (inline-control availability risk).
+
+### Architectural position
+
+- Interactive humans normally warrant stronger Layer-7 and endpoint data controls because they can dynamically choose data, applications, destinations, accounts and tenants.
+- Fixed-purpose managed workloads may use DNS + Layer-3/4 egress enforcement without mandatory active Layer-7 proxying when their destinations, protocols, software, identities and data flows are tightly constrained.
+- A non-human workload is not automatically low risk; sensitive data, broad privileges, arbitrary code execution or multi-tenant upload destinations can elevate it substantially.
+- Under assume breach, the key question is whether an attacker can repurpose an approved destination as a C2 or exfiltration channel.
+- Lack of Layer-7 inspection creates a known observability gap, but that gap can be an acceptable residual risk where the workload capability envelope is narrow and application/endpoint/provider telemetry is strong.
+- Layer-7 proxying is itself a risk-bearing production dependency. Its security benefit must be balanced against availability, latency, protocol compatibility, certificate/key management, operational complexity and shared failure-domain risk.
+- For business-critical fixed-purpose workloads, controlled direct egress with strong DNS/L3-L4, host, identity and application controls can be preferable to introducing an L7 dependency that provides little incremental security value.
+
 ## 2026-09-22 — Draft v0.3
 
 ### Added
