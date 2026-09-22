@@ -1,7 +1,7 @@
 # Enterprise Outbound Network Security
 
 **Status:** Working draft  
-**Version:** 0.3  
+**Version:** 0.4  
 **Last updated:** 2026-09-22
 
 ## 1. Purpose
@@ -68,6 +68,20 @@ Authentication, authorization, inspection and routing enforcement are separate c
 - **Path enforcement:** Can the workload bypass the intended control by taking another route?
 
 A strong enterprise design addresses all four as appropriate to the workload.
+
+
+### Risk-tiering principle
+
+The required egress control should be based on **what the source can do if misused or compromised**, not simply whether the source is called a workstation or server.
+
+In general:
+
+- **Interactive human endpoints are higher variability and usually higher egress risk** because a person, malicious insider or compromised session can select data, destinations, applications, SaaS tenants/accounts and transfer mechanisms dynamically.
+- **Fixed-purpose managed workloads can often be lower egress risk** when they run known software, have no interactive user, communicate with a small set of well-defined external services, hold limited data, and are protected by strong host/workload controls.
+- A server is **not automatically low risk**. A server with highly sensitive data, a shell, broad Internet access, powerful credentials, arbitrary code execution or access to a multi-tenant upload service may require stronger controls than a normal user endpoint.
+- A Layer-7 proxy should therefore be used where its additional visibility/control materially reduces residual risk, rather than being mandatory solely for architectural consistency.
+
+For a tightly constrained application workload, **enterprise/protective DNS + default-deny stateful egress + explicit source/destination/protocol policy + endpoint/workload security may be an acceptable primary control set**. The main residual limitation is that the network may know *where traffic went and how much moved*, but not necessarily *what data left, which application transaction carried it, or which logical tenant/account received it*.
 
 ---
 
@@ -233,6 +247,306 @@ The architecture must avoid turning security controls into a single enterprise-w
 A strong enterprise architecture does not require every packet to cross one central datacenter.
 
 Cloud and site-local enforcement can improve resilience and latency while enterprise-wide policy, logging, exception governance and monitoring remain centralized.
+
+
+### 4.11 Risk-tiered egress control selection
+
+The enterprise should not treat all Internet egress sources as having equal risk.
+
+The most important differentiators are:
+
+- **Human agency / interactivity:** Can a person choose files, commands, accounts, tenants and destinations at runtime?
+- **Destination variability:** Is the destination set fixed to one or a few services, or effectively the whole Internet?
+- **Data access:** What data can the source read if it is misused or compromised?
+- **Protocol flexibility:** Can the source use only one narrow protocol/API, or arbitrary browsers, scripting, tunnels and transfer clients?
+- **Software mutability:** Can users or attackers install/run additional tools or code?
+- **Credential power:** Does the source hold reusable cloud, API, SSH, SaaS or privileged credentials?
+- **Logical destination ambiguity:** Does an approved hostname front many tenants, accounts, storage buckets, recipients or customer environments?
+- **Compromise blast radius:** What can an attacker reach after taking control of the source?
+- **Availability criticality:** What business impact is created if an inline security control fails?
+- **Observability requirement:** Is it sufficient to know source/destination/bytes, or must the enterprise know the file, URL, API action, tenant or recipient?
+
+Risk tiering should drive the control pattern.
+
+#### 4.11.1 Suggested risk tiers
+
+| Tier | Typical source/use case | Main characteristics | Normal egress pattern | Layer-7 expectation |
+|---|---|---|---|---|
+| **Tier 1 — Constrained workload** | Managed server/service calling a small number of fixed external APIs | No human interaction; known software; fixed destinations/protocols; limited data; strong host controls | Enterprise/protective DNS + default-deny stateful firewall + exact destination/protocol rules + workload/EDR logging | Optional unless needed for URL/API/data policy |
+| **Tier 2 — Sensitive or flexible workload** | Server with sensitive data, package access, multiple SaaS APIs, upload capability or powerful credentials | Still machine-driven, but higher-value data or more opportunities to misuse approved services | Tier 1 controls + stronger workload identity, tighter application/API policy, volume monitoring, possibly egress gateway/proxy | Selective; use where it closes a real gap |
+| **Tier 3 — Interactive managed user** | Normal enterprise workstation/browser | Human can select data, websites, SaaS tenants, uploads/downloads and credentials; high behavioral variability | Identity-aware SWG/L7 controls + endpoint protection/DLP + DNS + network enforcement | Normally expected for web traffic |
+| **Tier 4 — Privileged / developer / high-capability user** | Admin workstation, developer endpoint, security tooling workstation | Shells, scripting, package tools, secrets, elevated access and many potential transfer mechanisms | Strong L7/SWG + endpoint DLP/EDR + application control + restricted administrative egress + separate privileged workflows | Strongly preferred, with exceptions explicitly engineered |
+| **Tier 5 — Crown-jewel / regulated transfer** | Highly sensitive data store, privileged management plane, regulated export | High consequence of exfiltration; general Internet often unnecessary | No general Internet; private connectivity, approved gateway/MFT/API integration only | Dedicated application-aware control if external transfer is required |
+
+These tiers are not asset labels. They are **egress-risk profiles**. A server can be Tier 4 or 5, and a highly locked-down kiosk/user device could be closer to Tier 2.
+
+#### 4.11.2 Human endpoint risk versus fixed-purpose server risk
+
+| Risk factor | Interactive human endpoint | Fixed-purpose managed server/workload |
+|---|---|---|
+| Destination selection | Often broad and user-controlled | Usually predefined |
+| Data selection | User can choose arbitrary accessible files/data | Application normally processes a defined dataset |
+| Logical recipient selection | Often possible through SaaS, email, SFTP, storage and collaboration tools | Often fixed by application configuration |
+| Software/tool choice | Browser, scripting, CLI, portable tools and many applications may exist | Usually small, controlled software set |
+| Credential use | Human may possess many SaaS/cloud identities and sessions | Usually limited service identities/secrets |
+| Mistake risk | Significant: wrong tenant, recipient, upload or share | Lower when workflow is deterministic |
+| Insider exfiltration risk | Higher because the user can intentionally select and move data | Lower if no interactive access and narrow egress |
+| Malware/phishing exposure | High due to browsing, documents, email and interactive content | Usually lower, depending on workload |
+| Ability to repurpose allowed destination | High; approved SaaS can often reach arbitrary external tenants/accounts | Varies; can be low for a single fixed API but high for multi-tenant storage/upload APIs |
+| Benefit from L7 filtering | Usually high | Highly dependent on workload |
+| Value of simple DNS/L3-L4 allowlisting | Limited for broad user Internet access | Often high for narrowly constrained workloads |
+| Residual visibility without L7 | Poor: cannot reliably know what user uploaded/shared | Often acceptable if application behavior, destination and data flow are already tightly bounded |
+| Availability sensitivity to proxy | User productivity impact | Can become direct production outage / cascading service failure |
+
+The enterprise should therefore avoid the assumption that **more inline inspection is always proportionate to risk**.
+
+A fixed-purpose managed server may present a lower residual egress risk than a human endpoint if all of the following are true:
+
+- It has no interactive end-user workflow.
+- Installed software and runtime are tightly managed.
+- It is allowed to reach only a very small set of known external endpoints.
+- Protocols and ports are fixed.
+- The external service has a single or well-controlled logical destination.
+- The workload has only the data and credentials needed for its purpose.
+- EDR/runtime protection and vulnerability management are strong.
+- Direct IP, alternate DNS, IPv6 and alternate Internet paths are controlled.
+- Egress events and byte volumes are logged.
+- The workload cannot create arbitrary Internet tunnels through an approved service.
+
+In this case, adding an active Layer-7 proxy may provide only incremental security benefit while adding a significant availability, compatibility and operational dependency.
+
+#### 4.11.3 What DNS + Layer-3/4 controls provide
+
+A constrained egress pattern can provide strong **where-can-this-source-connect** enforcement:
+
+```text
+Managed workload
+      |
+      | enterprise DNS
+      v
+Protective DNS
+      |
+      v
+Stateful egress firewall
+      |
+      | source = application zone / workload
+      | destination = approved API/provider
+      | protocol = TCP/443
+      v
+Approved external service
+```
+
+This can materially reduce attack options by preventing arbitrary command-and-control and arbitrary Internet exfiltration.
+
+It provides useful evidence such as:
+
+- Source host/workload.
+- Resolved destination.
+- Destination IP/port.
+- Session time/duration.
+- Bytes sent/received.
+- DNS query history.
+- Firewall allow/deny events.
+
+However, with end-to-end encryption it may **not** establish:
+
+- Which URL/path or API method was used.
+- What file or record was transmitted.
+- Which fields/data elements left.
+- Whether data was compressed/encrypted inside the application payload.
+- Which tenant/account/customer behind a multi-tenant service received the data.
+- Whether an HTTPS request was a normal application call or attacker-controlled data exfiltration.
+- Whether a permitted cloud/storage service was being used as an attacker-controlled drop location.
+
+This visibility limitation must be explicitly accepted as residual risk when Layer-7 inspection is not used.
+
+#### 4.11.4 Why that residual risk may still be acceptable for a managed server
+
+The lack of payload visibility is not automatically a high residual risk.
+
+For a well-managed fixed-purpose workload, risk can be reduced by controlling the **capability envelope** around the server:
+
+- Only the application process/service needs network access.
+- Only approved destinations are routable.
+- The approved destination accepts a narrow, defined protocol.
+- The service account cannot create arbitrary tenants/buckets/recipients.
+- Application inputs/outputs are schema-constrained.
+- Sensitive datasets are not broadly mounted/readable.
+- Secrets are short-lived and scoped.
+- EDR and runtime monitoring detect unusual process execution.
+- Application logs record business-level transactions.
+- Outbound bytes and request rates have known baselines.
+- The destination/provider has useful audit logs.
+- The host cannot install arbitrary tooling or establish alternate tunnels.
+
+In such a design, a compromise does not provide the attacker with a normal general-purpose Internet client. The attacker must either:
+
+1. Abuse one of the already-approved external services;
+2. Defeat the endpoint/runtime/network controls; or
+3. Find another enterprise system with a broader egress envelope.
+
+That is a meaningful reduction in attack freedom even when the network cannot inspect every payload.
+
+#### 4.11.5 Assume-breach overlay — fixed-purpose workload
+
+The enterprise should nevertheless assess the egress design assuming the workload is compromised.
+
+Assume the attacker can execute code with the privileges of the application, and potentially the host.
+
+Evaluate:
+
+| Assume-breach question | Residual risk | Useful controls |
+|---|---|---|
+| Can attacker connect to arbitrary Internet IPs? | Direct C2/exfiltration | Default-deny egress, route controls, no public IP, IPv4/IPv6 parity |
+| Can attacker use arbitrary external DNS/DoH? | DNS control bypass | Enterprise DNS enforcement, block unauthorized resolver paths |
+| Can attacker abuse an approved SaaS/API as a data sink? | Exfiltration through allowed destination | Service/tenant restrictions, scoped credentials, API/method controls, provider audit, L7/API gateway where useful |
+| Can attacker upload arbitrary payloads to the approved service? | Data loss despite destination allowlist | Application/API schema controls, DLP where practical, transaction limits |
+| Can attacker read valuable local data? | Exfiltration value increases | Data minimization, filesystem/DB authorization, service identity scope |
+| Can attacker obtain powerful reusable secrets? | Expansion beyond original host | Managed identity, short-lived credentials, secrets vault, key isolation |
+| Can attacker spawn `curl`, PowerShell, Python, SSH or tunnelling tools? | Repurposes allowed path | Application control, container isolation, restricted service account, EDR |
+| Can attacker tunnel through HTTPS to an approved destination? | Network policy may be bypassed logically | Destination design, API-aware gateway, anomaly detection, provider restrictions |
+| Can attacker send much more data than expected? | Bulk exfiltration | Egress volume/rate baselines, alerts, quotas |
+| Can attacker alter the application/configuration to add destinations? | Policy expansion | Externalized firewall policy, configuration integrity, change control |
+| Can attacker use another host as an egress relay? | Lateral movement defeats narrow egress | Segmentation, east-west controls, identity-based access |
+
+This assume-breach overlay is the main reason that **destination allowlisting alone is insufficient**, even for servers. The residual risk should be judged against the workload's reachable data, allowed destination capabilities and host-hardening posture.
+
+#### 4.11.6 Assume-breach overlay — human endpoint
+
+Assuming a human endpoint or session is compromised produces a larger potential attack envelope because the endpoint often already has:
+
+- Browser access to many Internet services.
+- Multiple authenticated SaaS sessions.
+- Access to email, collaboration and cloud storage.
+- Local and network file access.
+- Clipboard, copy/download/upload capabilities.
+- Shells, scripting or extensible applications.
+- The ability to choose arbitrary recipients or tenants inside approved services.
+
+Even if DNS and Layer-3/4 controls block known malicious destinations, the attacker may be able to exfiltrate through a legitimate permitted service.
+
+Examples include:
+
+- Uploading to an attacker-controlled account on an approved cloud storage service.
+- Sending to another tenant of an approved SaaS platform.
+- Posting data to a legitimate collaboration/messaging service.
+- Using an approved SFTP provider but a different subscriber/account.
+- Using browser-based encrypted file-transfer services.
+- Exfiltrating through a compromised legitimate website.
+
+For this reason, interactive human endpoints normally justify stronger combinations of:
+
+- Identity-aware Layer-7/SWG controls.
+- SaaS tenant restrictions.
+- Endpoint DLP.
+- CASB/SaaS controls.
+- Application control.
+- Browser controls.
+- EDR.
+- User/entity behavior analytics.
+- Service-native sharing/recipient restrictions.
+
+#### 4.11.7 Layer-7 filtering — incremental security value
+
+An active Layer-7 proxy/SWG can reduce residual risk by adding some combination of:
+
+- User/workload identity.
+- URL/path/category policy.
+- HTTP method controls.
+- File type controls.
+- Malware inspection.
+- DLP/content inspection.
+- SaaS application recognition.
+- Tenant/account restrictions for supported services.
+- Upload/download controls.
+- Reputation/sandboxing.
+- More detailed transaction logging.
+
+This is particularly valuable where the network destination alone is too coarse.
+
+Examples:
+
+- `storage.example.com` hosts both approved and attacker-controlled accounts.
+- A SaaS domain serves many tenants.
+- An HTTP API permits both read-only and upload/administrative actions.
+- Users can browse arbitrary Internet destinations.
+- The security requirement is to know or restrict **what** is leaving, not merely **where** traffic goes.
+
+However, Layer-7 controls still have residual limitations:
+
+- TLS inspection may be bypassed for mTLS, certificate pinning or unsupported protocols.
+- QUIC/HTTP3, WebSockets, gRPC and custom protocols may have partial support.
+- End-to-end application encryption can hide content even after TLS interception.
+- Password-protected/encrypted archives can defeat content inspection.
+- An approved application may encode data into otherwise valid transactions.
+- A compromised trusted service can still receive data.
+- SaaS tenant controls vary by provider.
+- An attacker can sometimes fragment or slowly exfiltrate data below volume thresholds.
+- Proxy identity proves the source identity presented to the proxy, not necessarily that the application process is uncompromised.
+
+Layer-7 filtering therefore improves visibility and policy depth but does not eliminate the need for endpoint/workload, identity, application and service-side controls.
+
+#### 4.11.8 Layer-7 proxy as an availability and security risk
+
+A Layer-7 proxy/SWG is not a free security control. When inserted into the active application path it becomes a production dependency.
+
+Risks include:
+
+| Proxy/intermediation risk | Potential impact |
+|---|---|
+| Proxy/SWG outage | Multiple applications lose external connectivity simultaneously |
+| Centralized architecture | One control-plane/data-plane failure has enterprise-wide blast radius |
+| Capacity exhaustion | High traffic or connection spikes cause latency, drops or outage |
+| Added latency | Application timeouts, slow transactions and degraded user experience |
+| TLS interception defects | Failed TLS handshakes, certificate errors or protocol incompatibility |
+| Certificate authority/key problems | Broad loss of connectivity or high-impact security exposure |
+| Proxy authentication failure | Applications cannot connect even though destination is healthy |
+| Policy/configuration error | Valid applications blocked across many environments |
+| Dynamic SaaS endpoint changes | Destination changes may cause production failure before policy catches up |
+| Protocol incompatibility | gRPC, WebSockets, QUIC, mTLS, pinning or vendor agents may fail |
+| Stateful/session dependency | Failover can reset long-running application sessions |
+| Cloud/SWG provider outage | Enterprise Internet access depends on a third party |
+| Backhaul dependency | WAN/site failure can break Internet access even when local Internet is healthy |
+| Logging/inspection overload | Security processing becomes throughput bottleneck |
+| TLS decryption concentration | Proxy becomes a high-value plaintext data and key target |
+
+A critical design decision is the failure mode:
+
+- **Fail closed:** stronger security posture, but proxy failure becomes application outage.
+- **Fail open/bypass:** better availability, but a proxy/control failure may create a period of weaker or uncontrolled egress.
+
+For business-critical fixed-purpose workloads, this trade-off can justify a simpler controlled-direct path when the workload's residual risk is already low and the Layer-7 control would add disproportionate availability risk.
+
+The preferred answer is often not a single central proxy, but:
+
+- Highly available regional/distributed enforcement.
+- Diverse failure domains.
+- Capacity headroom.
+- Health-based routing.
+- Tested bypass/emergency procedures with logging.
+- Explicit policy for which applications may use controlled direct egress.
+- Continued DNS/L3-L4 controls even during L7 bypass.
+- Application-specific monitoring and provider-side controls.
+
+#### 4.11.9 Decision matrix — DNS/L3-L4 versus Layer-7
+
+| Scenario | DNS + L3/L4 only | Add Layer-7 / application-aware control | Rationale |
+|---|---|---|---|
+| Fixed server -> one single-tenant API, low/medium data sensitivity | **Often sufficient with host controls** | Optional | Narrow destination and deterministic behavior create small attack envelope |
+| Fixed server -> multi-tenant cloud storage/upload service | Insufficient by itself | Usually desirable, or use service-native tenant/account restrictions | Approved hostname may be usable as attacker-controlled data sink |
+| Server -> vendor API using mTLS/pinning | Strong destination controls may be preferred | Non-decrypting proxy/gateway if useful; avoid forced interception | L7 interception may break the application and add little value |
+| Server holding highly sensitive data -> external Internet API | Baseline only | Consider API-aware gateway/L7 plus strong application controls | Impact of exfiltration justifies stronger prevention/visibility |
+| Human web browsing | Insufficient | Yes | Destination/data/tenant variability is high |
+| Human SFTP | Destination rule is useful but incomplete | Use endpoint DLP/provider restrictions/MFT rather than generic web proxy | SSH hides file/recipient detail from normal network controls |
+| Privileged/admin workstation | Insufficient | Strongly recommended plus endpoint restrictions | High privilege and tool flexibility |
+| Critical application with strict SLA and fixed endpoint | May be preferable if residual risk is low | Only if HA/compatibility can meet SLA | L7 dependency may create more operational risk than security benefit |
+| Crown-jewel system with no valid Internet need | No Internet route | Not applicable | Best egress control is no egress |
+
+#### 4.11.10 Practical policy statement
+
+The enterprise should adopt the following position:
+
+> **Interactive human Internet access normally requires stronger Layer-7 and endpoint data controls because human choice, SaaS multi-tenancy, broad data access and tool flexibility create a large and dynamic exfiltration surface. Fixed-purpose managed workloads may use a simpler DNS + Layer-3/4 egress model when destinations, protocols, software, identities and data flows are tightly constrained. The absence of Layer-7 inspection leaves a known visibility gap—particularly the inability to determine exactly what data was transmitted inside encrypted sessions—but that residual risk may be acceptable where the workload capability envelope is sufficiently narrow and strong compensating controls exist. Under an assume-breach model, architects must specifically assess whether an attacker could repurpose any approved destination as a command-and-control or exfiltration channel. Layer-7 controls should be added when they materially reduce that risk, while their availability, compatibility, privacy, key-management and operational failure modes are treated as risks in their own right.**
 
 ---
 
@@ -530,6 +844,45 @@ Validation may include:
 - Comparison of expected proxy/firewall telemetry with endpoint or flow telemetry.
 
 ---
+
+
+### OUT-21 — Risk-tiered egress control selection
+
+Egress control depth should be proportionate to the source's interactive capability, data access, destination variability, credential power, logical-recipient ambiguity, compromise impact and availability requirement.
+
+Interactive user access should normally receive stronger Layer-7 and endpoint data controls than a tightly constrained fixed-purpose workload.
+
+A server/application must not be classified as lower risk solely because it is non-human.
+
+### OUT-22 — Residual visibility acceptance
+
+Where encrypted application traffic is allowed without Layer-7 inspection, the architecture/risk record should explicitly state which facts cannot be determined from network telemetry, including where relevant:
+
+- Exact file/content transmitted.
+- URL/path/API method.
+- Logical SaaS tenant/account/recipient.
+- Application-layer data fields.
+- Whether an approved endpoint was repurposed for exfiltration.
+
+The risk owner should accept this visibility limitation or require compensating controls such as endpoint DLP, application logging, provider audit, API-aware controls or Layer-7 inspection.
+
+### OUT-23 — Inline control availability risk
+
+Any Layer-7 proxy, SWG, TLS-interception service or application-aware egress gateway placed in a production path must have availability and failure-mode requirements proportionate to the applications that depend on it.
+
+The design must address:
+
+- High availability and geographic/failure-domain diversity.
+- Capacity and latency.
+- Certificate/key lifecycle.
+- Protocol compatibility.
+- Dynamic endpoint/change management.
+- Fail-open versus fail-closed behavior.
+- Emergency bypass governance.
+- Monitoring and synthetic testing.
+- Recovery from security-provider or WAN outage.
+
+Security architecture review must consider the risk created by the control itself, not only the threats it mitigates.
 
 ## 6. Security approaches and trade-offs
 
