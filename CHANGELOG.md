@@ -2,6 +2,18 @@
 
 This file tracks material additions and changes to the Enterprise Outbound Security working drafts.
 
+## 2026-09-22 — Decision checklist v0.2
+
+### Added / changed
+
+- Added `docs/Enterprise_Outbound_Egress_Decision_Checklist.xlsx` as a practical architecture-review workbook.
+- Simplified the workbook from a weighted scoring model into a short checklist using mostly Yes/No and Low/Medium/High decisions.
+- The checklist now produces a direct control recommendation: no general Internet, protective DNS + restrictive Layer-3/4, enhanced compensating controls, or Layer-7/application-aware enforcement.
+- Added explicit checklist questions for human interactivity, fixed-purpose workloads, destination scope, arbitrary data selection, multi-tenant destinations, upload/data-sink capability, sensitive data, observability requirements, endpoint/workload hardening, service-native recipient controls and assume-breach abuse.
+- Added a separate Layer-7 availability/compatibility check so proxy/SWG failure-domain risk is considered alongside its security benefit.
+- Added a concise residual-risk statement covering the inability of DNS/L3-L4 telemetry to identify exact encrypted file/content, API action or logical tenant/recipient.
+- Added a quick-reference sheet describing the intended use and residual risks of DNS/L3-L4, L7/SWG, service-native tenant controls, MFT and private/no-Internet patterns.
+
 ## 2026-09-22 — Draft v0.4
 
 ### Added

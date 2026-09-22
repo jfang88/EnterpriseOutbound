@@ -5,6 +5,7 @@ Enterprise architecture working notes and draft standards for securing outbound 
 ## Current draft
 
 - [Enterprise Outbound Network Security – Requirements, Patterns and Trade-offs](docs/enterprise-outbound-security.md)
+- [Outbound Egress Decision Checklist (Excel)](docs/Enterprise_Outbound_Egress_Decision_Checklist.xlsx)
 - [Change Log / Additions](CHANGELOG.md)
 
 ## Status
